@@ -1,1 +1,99 @@
+#########################################################################
+### Statistical segmentation in R                                     ###
+### RFM MODEL (Recency, Frequency, Monetary)                          ###
+### Database source:https://www.kaggle.com/kyanyoga/sample-sales-data ###
+#########################################################################
+
+### Preparing and transforming data ###
+
+#Loading the csv database, assigning it to a data frame and exploring the structure
+rm(list=ls(all=TRUE))
+setwd("~/R")
+data=read.csv("sales_data_sample.csv",header=TRUE)
+head(data)
+str(data)
+summary(data)
+
+#Adding customer ID
+data=transform(data,CUSTOMERID=as.numeric(factor(CUSTOMERNAME)))
+
+#Formatting date
+data$ORDERDATE=as.Date(data$ORDERDATE,"%m/%d/%Y")
+
+#Selectiong the relevant variables for the analysis: 
+#ID, sales amount, order date.
+data2=data[,c(26,5,6)]
+head(data2)
+summary(data2)
+
+#Adding recency as variable
+data2$DAYSSINCE=as.numeric(difftime(time1 = "2005-06-01",
+                                  time2 = data2$ORDERDATE,
+                                  units = "days"))
+head(data2)
+summary(data2)
+
+#Getting Recency, Frequency and Monetary variables using SQL statements
+install.packages("sqldf")
+library(sqldf)
+data3 = sqldf("SELECT CUSTOMERID,
+                          MIN(DAYSSINCE) AS 'recency',
+                          COUNT(*) AS 'frequency',
+                          AVG(SALES) AS 'amount'
+                   FROM data2 GROUP BY 1")
+
+#Exploring data
+head(data3)
+summary(data3)
+hist(data3$recency)
+hist(data3$frequency,breaks=20)
+hist(data3$amount)
+
+#Setting customer ID as row names
+newdata=data3
+row.names(newdata)=newdata$CUSTOMERID
+newdata$CUSTOMERID=NULL
+head(newdata)
+
+#Log-transform for the monetary variable
+newdata$amount=log(newdata$amount)
+hist(newdata$amount)
+
+#Scaling data to make them comparable
+newdata=scale(newdata)
+head(newdata)
+
+### Running hierarchical segmentation ###
+
+#Computing distance
+d=dist(newdata)
+
+#Apply hierarchical clustering
+c=hclust(d,method="ward.D2")
+
+#Plotting dendogram
+plot(c)
+
+#Determining number of segments
+members=cutree(c,k=6)
+
+#How many members for each segment
+table(members)
+
+#Profile for each segment and save csv file
+segmentation=aggregate(data3[, 2:4], by = list(members), mean)
+print(segmentation)
+write.csv(segmentation, "Hclust.csv", row.names=FALSE)
+
+# Visualization for managerial decisions
+palette(rainbow(12, s = 0.6, v = 0.75))
+stars(segmentation[,2:4], scale=TRUE, len = 0.6, key.loc = c(11, 6),xlim=c(2,12),main = "Segments", draw.segments = TRUE,nrow = 2, cex = .75,labels=segmentation$Group.1)
+#The previous visualization may not be enough clear to be presented
+#Making some changes to improve it
+datavisual=segmentation[1:5,] 
+print(datavisual)
+datavisual$recency=1/datavisual$recency 
+print(datavisual)
+stars(datavisual[,2:4], scale=TRUE, len = 0.6, key.loc = c(11, 6),xlim=c(2,12),main = "Segments", draw.segments = TRUE,nrow = 2, cex = .75,labels=segmentation$Group.1)
+
 
